@@ -329,5 +329,3 @@ BetterDiscord modifies the Discord client, and Discord's internal APIs can chang
 ## License
 
 RoleSearch is released under the [MIT License](LICENSE).
-
-Before publishing the repository, replace `YOUR_GITHUB_USERNAME` in both `RoleSearch.plugin.js` and `LICENSE` with your actual GitHub username or preferred author name.
