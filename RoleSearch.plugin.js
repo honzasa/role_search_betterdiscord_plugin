@@ -1,13 +1,488 @@
 /**
  * @name RoleSearch
  * @author honzasa
- * @version 2.3.0
+ * @version 2.4.0
  * @description Fast role member lookup for large Discord servers. Uses Discord's role member IDs API, hydrates missing members through the Gateway, deduplicates by Discord ID, and preserves role cache plus legacy DFS cache/checkpoints.
  */
+
+
+const ROLESEARCH_LANGUAGE_NAMES = {
+    auto: "Auto (Discord)",
+    en: "English",
+    cs: "Čeština",
+    sk: "Slovenčina",
+    de: "Deutsch",
+    pl: "Polski",
+    es: "Español",
+    fr: "Français"
+};
+
+const ROLESEARCH_I18N = {
+    en: {
+        settingsLanguage: "Language",
+        settingsLanguageHint: "Auto follows Discord's language. Unsupported Discord languages fall back to English.",
+        server: "Server",
+        role: "Role",
+        membersWithSelectedRole: "Members with selected role",
+        noServerSelected: "No server selected",
+        selectRole: "Select a role.",
+        selectRoleLeft: "Select a role on the left.",
+        waitingDirectMembers: "Waiting for direct role members…",
+        loadingMemberIds: "Loading member IDs directly from Discord's role API…",
+        roleApiError: "Role API error: {error}",
+        completeRole: "{direct} / {total} direct IDs — complete role",
+        endpointLimit: "{direct} / {total} direct IDs — Discord endpoint limit is 100",
+        directOfTotal: "{direct} / {total} direct IDs",
+        directLoaded: "{direct} direct IDs loaded",
+        extraCache: " • +{extras} extra from saved/legacy cache",
+        details: " • details {resolved}/{total}",
+        waitingRoleData: "Waiting for role data…",
+        profileActionMissing: "RoleSearch: user profile action not found.",
+        profileOpenFailed: "RoleSearch: could not open profile.",
+        openDiscordProfile: "Open Discord profile",
+        searchRole: "Search role…",
+        searchRoleName: "Search role name...",
+        noRolesFound: "No roles found.",
+        refresh: "Refresh",
+        searchMembers: "Search members…",
+        shownLoaded: "{shown} shown / {loaded} loaded",
+        zeroMembers: "0 members",
+        loadingRoleMembers: "Loading role members…",
+        noLoadedMembersMatch: "No loaded members match.",
+        close: "Close",
+        customModalFailed: "RoleSearch: custom modal render failed. Check console.",
+        totalSuffix: " — {count} total",
+        cachedSuffix: " — {count} cached",
+        memberCount: "{shown} shown / {loaded} unique loaded members",
+        noMembersLoaded: "No members of this role are loaded yet.",
+        maxShown: "Showing the first {max} of {total}. Use search to narrow the list.",
+        roleCountsLoading: "role counts: loading",
+        roleCountsLoaded: "role counts: {count} loaded",
+        roleCountsError: "role counts error: {error}",
+        roleCountsIdle: "role counts: idle",
+        cachedDetails: "cached member details: {count}",
+        legacyImported: "legacy imported: {count}",
+        note:
+            "After selecting a role, member IDs are loaded directly from Discord's role API. " +
+            "The endpoint returns a maximum of 100 IDs. Roles with up to 100 members can therefore be complete; " +
+            "larger roles show up to 100 direct results plus any additional members from saved/legacy cache. " +
+            "The old DFS checkpoint is never deleted or overwritten.",
+        refreshRoleCounts: "Refresh role counts",
+        refreshSelectedRole: "Refresh selected role",
+        useCurrentServer: "Use currently open server",
+        clearCache: "Clear v2 cache",
+        searchLoadedMembers: "Search loaded members by username / display name / nick / ID...",
+        cacheCleared: "RoleSearch v2 cache cleared. Legacy DFS checkpoint was preserved.",
+        roleCountsStateLoading: "role counts: loading",
+        roleCountsStateLoaded: "role counts: {count} loaded",
+        roleCountsStateError: "role counts error: {error}",
+        roleCountsStateIdle: "role counts: idle",
+        directStatusLoaded: "{direct} / {total} direct IDs — complete role",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "{count} member(s) loaded",
+        languageChanged: "RoleSearch language: {language}",
+        presenceOnline: "online",
+        presenceIdle: "idle",
+        presenceDnd: "do not disturb",
+        presenceStreaming: "streaming",
+        presenceOffline: "offline"
+    },
+
+    cs: {
+        settingsLanguage: "Jazyk",
+        settingsLanguageHint: "Auto používá jazyk Discordu. Nepodporované jazyky Discordu se zobrazí anglicky.",
+        server: "Server",
+        role: "Role",
+        membersWithSelectedRole: "Členové s vybranou rolí",
+        noServerSelected: "Není vybraný server",
+        selectRole: "Vyber roli.",
+        selectRoleLeft: "Vyber roli vlevo.",
+        waitingDirectMembers: "Čekám na přímé načtení členů role…",
+        loadingMemberIds: "Načítám member IDs přímo z Discord role API…",
+        roleApiError: "Chyba Role API: {error}",
+        completeRole: "{direct} / {total} direct IDs — kompletní role",
+        endpointLimit: "{direct} / {total} direct IDs — Discord endpoint má limit 100",
+        directOfTotal: "{direct} / {total} direct IDs",
+        directLoaded: "{direct} direct IDs načteno",
+        extraCache: " • +{extras} navíc z uložené/legacy cache",
+        details: " • detaily {resolved}/{total}",
+        waitingRoleData: "Čekám na data role…",
+        profileActionMissing: "RoleSearch: akce pro otevření profilu nebyla nalezena.",
+        profileOpenFailed: "RoleSearch: profil se nepodařilo otevřít.",
+        openDiscordProfile: "Otevřít Discord profil",
+        searchRole: "Hledat roli…",
+        searchRoleName: "Hledat název role...",
+        noRolesFound: "Žádné role nenalezeny.",
+        refresh: "Obnovit",
+        searchMembers: "Hledat členy…",
+        shownLoaded: "{shown} zobrazeno / {loaded} načteno",
+        zeroMembers: "0 členů",
+        loadingRoleMembers: "Načítám členy role…",
+        noLoadedMembersMatch: "Žádní načtení členové neodpovídají hledání.",
+        close: "Zavřít",
+        customModalFailed: "RoleSearch: nepodařilo se vykreslit okno. Zkontroluj konzoli.",
+        totalSuffix: " — celkem {count}",
+        cachedSuffix: " — {count} v cache",
+        memberCount: "{shown} zobrazeno / {loaded} unikátních načtených členů",
+        noMembersLoaded: "Zatím nejsou načteni žádní členové této role.",
+        maxShown: "Zobrazeno prvních {max} z {total}. Použij hledání pro zúžení.",
+        roleCountsLoading: "počty rolí: načítání",
+        roleCountsLoaded: "počty rolí: {count} načteno",
+        roleCountsError: "chyba počtů rolí: {error}",
+        roleCountsIdle: "počty rolí: čeká",
+        cachedDetails: "detaily členů v cache: {count}",
+        legacyImported: "importováno z legacy cache: {count}",
+        note:
+            "Po výběru role se member IDs načtou přímo z Discord role API. " +
+            "Endpoint vrací maximálně 100 IDs. U role do 100 členů tak může být výsledek kompletní; " +
+            "u větší role se zobrazí až 100 přímých výsledků plus případní další členové z uložené/legacy cache. " +
+            "Starý DFS checkpoint plugin nemaže ani nepřepisuje.",
+        refreshRoleCounts: "Obnovit počty rolí",
+        refreshSelectedRole: "Obnovit vybranou roli",
+        useCurrentServer: "Použít právě otevřený server",
+        clearCache: "Vymazat v2 cache",
+        searchLoadedMembers: "Hledat načtené členy podle username / display name / nicku / ID...",
+        cacheCleared: "RoleSearch v2 cache byla vymazána. Legacy DFS checkpoint zůstal zachovaný.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "Načteno členů: {count}",
+        languageChanged: "Jazyk RoleSearch: {language}",
+        presenceOnline: "online",
+        presenceIdle: "nečinný",
+        presenceDnd: "nerušit",
+        presenceStreaming: "streamuje",
+        presenceOffline: "offline"
+    },
+
+    sk: {
+        settingsLanguage: "Jazyk",
+        settingsLanguageHint: "Auto používa jazyk Discordu. Nepodporované jazyky sa zobrazia po anglicky.",
+        server: "Server",
+        role: "Rola",
+        membersWithSelectedRole: "Členovia s vybranou rolou",
+        noServerSelected: "Nie je vybraný server",
+        selectRole: "Vyber rolu.",
+        selectRoleLeft: "Vyber rolu vľavo.",
+        waitingDirectMembers: "Čakám na priame načítanie členov roly…",
+        loadingMemberIds: "Načítavam member IDs priamo z Discord role API…",
+        roleApiError: "Chyba Role API: {error}",
+        completeRole: "{direct} / {total} direct IDs — kompletná rola",
+        endpointLimit: "{direct} / {total} direct IDs — Discord endpoint má limit 100",
+        directOfTotal: "{direct} / {total} direct IDs",
+        directLoaded: "{direct} direct IDs načítaných",
+        extraCache: " • +{extras} navyše z uloženej/legacy cache",
+        details: " • detaily {resolved}/{total}",
+        waitingRoleData: "Čakám na dáta roly…",
+        profileActionMissing: "RoleSearch: akcia na otvorenie profilu sa nenašla.",
+        profileOpenFailed: "RoleSearch: profil sa nepodarilo otvoriť.",
+        openDiscordProfile: "Otvoriť Discord profil",
+        searchRole: "Hľadať rolu…",
+        searchRoleName: "Hľadať názov roly...",
+        noRolesFound: "Nenašli sa žiadne roly.",
+        refresh: "Obnoviť",
+        searchMembers: "Hľadať členov…",
+        shownLoaded: "{shown} zobrazených / {loaded} načítaných",
+        zeroMembers: "0 členov",
+        loadingRoleMembers: "Načítavam členov roly…",
+        noLoadedMembersMatch: "Žiadni načítaní členovia nezodpovedajú hľadaniu.",
+        close: "Zavrieť",
+        customModalFailed: "RoleSearch: okno sa nepodarilo vykresliť. Skontroluj konzolu.",
+        totalSuffix: " — spolu {count}",
+        cachedSuffix: " — {count} v cache",
+        memberCount: "{shown} zobrazených / {loaded} unikátnych načítaných členov",
+        noMembersLoaded: "Zatiaľ nie sú načítaní žiadni členovia tejto roly.",
+        maxShown: "Zobrazených prvých {max} z {total}. Použi hľadanie na zúženie.",
+        roleCountsLoading: "počty rolí: načítavanie",
+        roleCountsLoaded: "počty rolí: {count} načítaných",
+        roleCountsError: "chyba počtov rolí: {error}",
+        roleCountsIdle: "počty rolí: čaká",
+        cachedDetails: "detaily členov v cache: {count}",
+        legacyImported: "importované z legacy cache: {count}",
+        note:
+            "Po výbere roly sa member IDs načítajú priamo z Discord role API. " +
+            "Endpoint vracia maximálne 100 IDs. Roly do 100 členov môžu byť kompletné; " +
+            "väčšie roly zobrazia až 100 priamych výsledkov plus ďalších členov z uloženej/legacy cache. " +
+            "Starý DFS checkpoint sa nemaže ani neprepisuje.",
+        refreshRoleCounts: "Obnoviť počty rolí",
+        refreshSelectedRole: "Obnoviť vybranú rolu",
+        useCurrentServer: "Použiť aktuálne otvorený server",
+        clearCache: "Vymazať v2 cache",
+        searchLoadedMembers: "Hľadať načítaných členov podľa username / display name / nicku / ID...",
+        cacheCleared: "RoleSearch v2 cache bola vymazaná. Legacy DFS checkpoint zostal zachovaný.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "Načítaných členov: {count}",
+        languageChanged: "Jazyk RoleSearch: {language}",
+        presenceOnline: "online",
+        presenceIdle: "nečinný",
+        presenceDnd: "nerušiť",
+        presenceStreaming: "streamuje",
+        presenceOffline: "offline"
+    },
+
+    de: {
+        settingsLanguage: "Sprache",
+        settingsLanguageHint: "Auto folgt der Discord-Sprache. Nicht unterstützte Discord-Sprachen fallen auf Englisch zurück.",
+        server: "Server",
+        role: "Rolle",
+        membersWithSelectedRole: "Mitglieder mit ausgewählter Rolle",
+        noServerSelected: "Kein Server ausgewählt",
+        selectRole: "Rolle auswählen.",
+        selectRoleLeft: "Wähle links eine Rolle.",
+        waitingDirectMembers: "Warte auf direkte Rollenmitglieder…",
+        loadingMemberIds: "Lade Member-IDs direkt über Discords Rollen-API…",
+        roleApiError: "Rollen-API-Fehler: {error}",
+        completeRole: "{direct} / {total} direkte IDs — vollständige Rolle",
+        endpointLimit: "{direct} / {total} direkte IDs — Discord-Endpunkt ist auf 100 begrenzt",
+        directOfTotal: "{direct} / {total} direkte IDs",
+        directLoaded: "{direct} direkte IDs geladen",
+        extraCache: " • +{extras} zusätzlich aus gespeichertem/Legacy-Cache",
+        details: " • Details {resolved}/{total}",
+        waitingRoleData: "Warte auf Rollendaten…",
+        profileActionMissing: "RoleSearch: Profilaktion nicht gefunden.",
+        profileOpenFailed: "RoleSearch: Profil konnte nicht geöffnet werden.",
+        openDiscordProfile: "Discord-Profil öffnen",
+        searchRole: "Rolle suchen…",
+        searchRoleName: "Rollennamen suchen...",
+        noRolesFound: "Keine Rollen gefunden.",
+        refresh: "Aktualisieren",
+        searchMembers: "Mitglieder suchen…",
+        shownLoaded: "{shown} angezeigt / {loaded} geladen",
+        zeroMembers: "0 Mitglieder",
+        loadingRoleMembers: "Rollenmitglieder werden geladen…",
+        noLoadedMembersMatch: "Keine geladenen Mitglieder passen zur Suche.",
+        close: "Schließen",
+        customModalFailed: "RoleSearch: Fenster konnte nicht gerendert werden. Konsole prüfen.",
+        totalSuffix: " — {count} gesamt",
+        cachedSuffix: " — {count} im Cache",
+        memberCount: "{shown} angezeigt / {loaded} eindeutige geladene Mitglieder",
+        noMembersLoaded: "Für diese Rolle sind noch keine Mitglieder geladen.",
+        maxShown: "Die ersten {max} von {total} werden angezeigt. Suche zum Eingrenzen verwenden.",
+        roleCountsLoading: "Rollenzahlen: werden geladen",
+        roleCountsLoaded: "Rollenzahlen: {count} geladen",
+        roleCountsError: "Fehler bei Rollenzahlen: {error}",
+        roleCountsIdle: "Rollenzahlen: bereit",
+        cachedDetails: "Mitgliederdetails im Cache: {count}",
+        legacyImported: "aus Legacy-Cache importiert: {count}",
+        note:
+            "Nach Auswahl einer Rolle werden Member-IDs direkt über Discords Rollen-API geladen. " +
+            "Der Endpunkt liefert höchstens 100 IDs. Rollen mit bis zu 100 Mitgliedern können vollständig sein; " +
+            "größere Rollen zeigen bis zu 100 direkte Ergebnisse plus zusätzliche Mitglieder aus gespeichertem/Legacy-Cache. " +
+            "Der alte DFS-Checkpoint wird nicht gelöscht oder überschrieben.",
+        refreshRoleCounts: "Rollenzahlen aktualisieren",
+        refreshSelectedRole: "Ausgewählte Rolle aktualisieren",
+        useCurrentServer: "Aktuell geöffneten Server verwenden",
+        clearCache: "v2-Cache leeren",
+        searchLoadedMembers: "Geladene Mitglieder nach Benutzername / Anzeigename / Nick / ID suchen...",
+        cacheCleared: "RoleSearch-v2-Cache geleert. Legacy-DFS-Checkpoint wurde beibehalten.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "{count} Mitglied(er) geladen",
+        languageChanged: "RoleSearch-Sprache: {language}",
+        presenceOnline: "online",
+        presenceIdle: "abwesend",
+        presenceDnd: "nicht stören",
+        presenceStreaming: "streamt",
+        presenceOffline: "offline"
+    },
+
+    pl: {
+        settingsLanguage: "Język",
+        settingsLanguageHint: "Auto używa języka Discorda. Nieobsługiwane języki Discorda przechodzą na angielski.",
+        server: "Serwer",
+        role: "Rola",
+        membersWithSelectedRole: "Członkowie z wybraną rolą",
+        noServerSelected: "Nie wybrano serwera",
+        selectRole: "Wybierz rolę.",
+        selectRoleLeft: "Wybierz rolę po lewej.",
+        waitingDirectMembers: "Oczekiwanie na bezpośrednią listę członków roli…",
+        loadingMemberIds: "Ładowanie member IDs bezpośrednio z API ról Discorda…",
+        roleApiError: "Błąd API roli: {error}",
+        completeRole: "{direct} / {total} bezpośrednich ID — pełna rola",
+        endpointLimit: "{direct} / {total} bezpośrednich ID — limit endpointu Discorda to 100",
+        directOfTotal: "{direct} / {total} bezpośrednich ID",
+        directLoaded: "Załadowano {direct} bezpośrednich ID",
+        extraCache: " • +{extras} dodatkowych z zapisanej/legacy cache",
+        details: " • szczegóły {resolved}/{total}",
+        waitingRoleData: "Oczekiwanie na dane roli…",
+        profileActionMissing: "RoleSearch: nie znaleziono akcji profilu.",
+        profileOpenFailed: "RoleSearch: nie udało się otworzyć profilu.",
+        openDiscordProfile: "Otwórz profil Discord",
+        searchRole: "Szukaj roli…",
+        searchRoleName: "Szukaj nazwy roli...",
+        noRolesFound: "Nie znaleziono ról.",
+        refresh: "Odśwież",
+        searchMembers: "Szukaj członków…",
+        shownLoaded: "{shown} pokazanych / {loaded} załadowanych",
+        zeroMembers: "0 członków",
+        loadingRoleMembers: "Ładowanie członków roli…",
+        noLoadedMembersMatch: "Brak załadowanych członków pasujących do wyszukiwania.",
+        close: "Zamknij",
+        customModalFailed: "RoleSearch: nie udało się wyrenderować okna. Sprawdź konsolę.",
+        totalSuffix: " — {count} łącznie",
+        cachedSuffix: " — {count} w cache",
+        memberCount: "{shown} pokazanych / {loaded} unikalnych załadowanych członków",
+        noMembersLoaded: "Nie załadowano jeszcze członków tej roli.",
+        maxShown: "Pokazano pierwszych {max} z {total}. Użyj wyszukiwania, aby zawęzić listę.",
+        roleCountsLoading: "liczby ról: ładowanie",
+        roleCountsLoaded: "liczby ról: załadowano {count}",
+        roleCountsError: "błąd liczby ról: {error}",
+        roleCountsIdle: "liczby ról: gotowe",
+        cachedDetails: "szczegóły członków w cache: {count}",
+        legacyImported: "zaimportowano z legacy cache: {count}",
+        note:
+            "Po wybraniu roli member IDs są ładowane bezpośrednio z API ról Discorda. " +
+            "Endpoint zwraca maksymalnie 100 ID. Role do 100 członków mogą być kompletne; " +
+            "większe role pokazują do 100 bezpośrednich wyników plus dodatkowych członków z zapisanej/legacy cache. " +
+            "Stary checkpoint DFS nie jest usuwany ani nadpisywany.",
+        refreshRoleCounts: "Odśwież liczby ról",
+        refreshSelectedRole: "Odśwież wybraną rolę",
+        useCurrentServer: "Użyj aktualnie otwartego serwera",
+        clearCache: "Wyczyść cache v2",
+        searchLoadedMembers: "Szukaj załadowanych członków po username / display name / nicku / ID...",
+        cacheCleared: "Cache RoleSearch v2 wyczyszczona. Legacy checkpoint DFS został zachowany.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "Załadowano członków: {count}",
+        languageChanged: "Język RoleSearch: {language}",
+        presenceOnline: "online",
+        presenceIdle: "bezczynny",
+        presenceDnd: "nie przeszkadzać",
+        presenceStreaming: "streamuje",
+        presenceOffline: "offline"
+    },
+
+    es: {
+        settingsLanguage: "Idioma",
+        settingsLanguageHint: "Auto sigue el idioma de Discord. Los idiomas no compatibles usan inglés.",
+        server: "Servidor",
+        role: "Rol",
+        membersWithSelectedRole: "Miembros con el rol seleccionado",
+        noServerSelected: "Ningún servidor seleccionado",
+        selectRole: "Selecciona un rol.",
+        selectRoleLeft: "Selecciona un rol a la izquierda.",
+        waitingDirectMembers: "Esperando los miembros directos del rol…",
+        loadingMemberIds: "Cargando IDs de miembros directamente desde la API de roles de Discord…",
+        roleApiError: "Error de la API del rol: {error}",
+        completeRole: "{direct} / {total} IDs directos — rol completo",
+        endpointLimit: "{direct} / {total} IDs directos — el endpoint de Discord está limitado a 100",
+        directOfTotal: "{direct} / {total} IDs directos",
+        directLoaded: "{direct} IDs directos cargados",
+        extraCache: " • +{extras} extra desde caché guardada/legacy",
+        details: " • detalles {resolved}/{total}",
+        waitingRoleData: "Esperando datos del rol…",
+        profileActionMissing: "RoleSearch: no se encontró la acción del perfil.",
+        profileOpenFailed: "RoleSearch: no se pudo abrir el perfil.",
+        openDiscordProfile: "Abrir perfil de Discord",
+        searchRole: "Buscar rol…",
+        searchRoleName: "Buscar nombre de rol...",
+        noRolesFound: "No se encontraron roles.",
+        refresh: "Actualizar",
+        searchMembers: "Buscar miembros…",
+        shownLoaded: "{shown} mostrados / {loaded} cargados",
+        zeroMembers: "0 miembros",
+        loadingRoleMembers: "Cargando miembros del rol…",
+        noLoadedMembersMatch: "Ningún miembro cargado coincide.",
+        close: "Cerrar",
+        customModalFailed: "RoleSearch: no se pudo mostrar la ventana. Revisa la consola.",
+        totalSuffix: " — {count} total",
+        cachedSuffix: " — {count} en caché",
+        memberCount: "{shown} mostrados / {loaded} miembros únicos cargados",
+        noMembersLoaded: "Aún no hay miembros cargados para este rol.",
+        maxShown: "Mostrando los primeros {max} de {total}. Usa la búsqueda para reducir la lista.",
+        roleCountsLoading: "conteos de roles: cargando",
+        roleCountsLoaded: "conteos de roles: {count} cargados",
+        roleCountsError: "error de conteos de roles: {error}",
+        roleCountsIdle: "conteos de roles: listo",
+        cachedDetails: "detalles de miembros en caché: {count}",
+        legacyImported: "importados de caché legacy: {count}",
+        note:
+            "Después de seleccionar un rol, los member IDs se cargan directamente desde la API de roles de Discord. " +
+            "El endpoint devuelve un máximo de 100 IDs. Los roles con hasta 100 miembros pueden estar completos; " +
+            "los roles más grandes muestran hasta 100 resultados directos más miembros adicionales de la caché guardada/legacy. " +
+            "El checkpoint DFS antiguo no se elimina ni se sobrescribe.",
+        refreshRoleCounts: "Actualizar conteos de roles",
+        refreshSelectedRole: "Actualizar rol seleccionado",
+        useCurrentServer: "Usar servidor abierto actualmente",
+        clearCache: "Borrar caché v2",
+        searchLoadedMembers: "Buscar miembros cargados por username / display name / nick / ID...",
+        cacheCleared: "Caché de RoleSearch v2 borrada. El checkpoint DFS legacy se conservó.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "{count} miembro(s) cargado(s)",
+        languageChanged: "Idioma de RoleSearch: {language}",
+        presenceOnline: "en línea",
+        presenceIdle: "ausente",
+        presenceDnd: "no molestar",
+        presenceStreaming: "transmitiendo",
+        presenceOffline: "desconectado"
+    },
+
+    fr: {
+        settingsLanguage: "Langue",
+        settingsLanguageHint: "Auto suit la langue de Discord. Les langues non prises en charge utilisent l'anglais.",
+        server: "Serveur",
+        role: "Rôle",
+        membersWithSelectedRole: "Membres avec le rôle sélectionné",
+        noServerSelected: "Aucun serveur sélectionné",
+        selectRole: "Sélectionnez un rôle.",
+        selectRoleLeft: "Sélectionnez un rôle à gauche.",
+        waitingDirectMembers: "En attente des membres directs du rôle…",
+        loadingMemberIds: "Chargement des IDs membres directement depuis l'API des rôles Discord…",
+        roleApiError: "Erreur API du rôle : {error}",
+        completeRole: "{direct} / {total} IDs directs — rôle complet",
+        endpointLimit: "{direct} / {total} IDs directs — l'endpoint Discord est limité à 100",
+        directOfTotal: "{direct} / {total} IDs directs",
+        directLoaded: "{direct} IDs directs chargés",
+        extraCache: " • +{extras} supplémentaires depuis le cache enregistré/legacy",
+        details: " • détails {resolved}/{total}",
+        waitingRoleData: "En attente des données du rôle…",
+        profileActionMissing: "RoleSearch : action de profil introuvable.",
+        profileOpenFailed: "RoleSearch : impossible d'ouvrir le profil.",
+        openDiscordProfile: "Ouvrir le profil Discord",
+        searchRole: "Rechercher un rôle…",
+        searchRoleName: "Rechercher un nom de rôle...",
+        noRolesFound: "Aucun rôle trouvé.",
+        refresh: "Actualiser",
+        searchMembers: "Rechercher des membres…",
+        shownLoaded: "{shown} affichés / {loaded} chargés",
+        zeroMembers: "0 membre",
+        loadingRoleMembers: "Chargement des membres du rôle…",
+        noLoadedMembersMatch: "Aucun membre chargé ne correspond.",
+        close: "Fermer",
+        customModalFailed: "RoleSearch : impossible d'afficher la fenêtre. Vérifiez la console.",
+        totalSuffix: " — {count} au total",
+        cachedSuffix: " — {count} en cache",
+        memberCount: "{shown} affichés / {loaded} membres uniques chargés",
+        noMembersLoaded: "Aucun membre de ce rôle n'est encore chargé.",
+        maxShown: "Affichage des {max} premiers sur {total}. Utilisez la recherche pour réduire la liste.",
+        roleCountsLoading: "comptes de rôles : chargement",
+        roleCountsLoaded: "comptes de rôles : {count} chargés",
+        roleCountsError: "erreur des comptes de rôles : {error}",
+        roleCountsIdle: "comptes de rôles : prêt",
+        cachedDetails: "détails membres en cache : {count}",
+        legacyImported: "importés du cache legacy : {count}",
+        note:
+            "Après sélection d'un rôle, les member IDs sont chargés directement depuis l'API des rôles Discord. " +
+            "L'endpoint renvoie au maximum 100 IDs. Les rôles jusqu'à 100 membres peuvent donc être complets ; " +
+            "les rôles plus grands affichent jusqu'à 100 résultats directs plus d'éventuels membres du cache enregistré/legacy. " +
+            "L'ancien checkpoint DFS n'est ni supprimé ni écrasé.",
+        refreshRoleCounts: "Actualiser les comptes de rôles",
+        refreshSelectedRole: "Actualiser le rôle sélectionné",
+        useCurrentServer: "Utiliser le serveur actuellement ouvert",
+        clearCache: "Vider le cache v2",
+        searchLoadedMembers: "Rechercher les membres chargés par username / display name / pseudo / ID...",
+        cacheCleared: "Cache RoleSearch v2 vidé. Le checkpoint DFS legacy a été conservé.",
+        contextMenuLabel: "RoleSearch",
+        loadedRoleMembers: "{count} membre(s) chargé(s)",
+        languageChanged: "Langue RoleSearch : {language}",
+        presenceOnline: "en ligne",
+        presenceIdle: "inactif",
+        presenceDnd: "ne pas déranger",
+        presenceStreaming: "en streaming",
+        presenceOffline: "hors ligne"
+    }
+};
 
 module.exports = class RoleSearch {
     constructor() {
         this.pluginName = "RoleSearch";
+        this.languageSetting = "auto";
 
         this.dispatcher = null;
         this.rest = null;
@@ -51,6 +526,108 @@ module.exports = class RoleSearch {
 
     legacyCheckpointKey(guildId = this.guildId) {
         return `checkpoint-v1-${guildId ?? "none"}`;
+    }
+
+    pluginSettingsKey() {
+        return "plugin-settings-v1";
+    }
+
+    loadPluginSettings() {
+        const saved = this.dataLoad?.(this.pluginSettingsKey()) ?? null;
+        const language = saved?.language;
+
+        if (language === "auto" || ROLESEARCH_I18N[language]) {
+            this.languageSetting = language;
+        } else {
+            this.languageSetting = "auto";
+        }
+    }
+
+    savePluginSettings() {
+        return this.dataSave?.(this.pluginSettingsKey(), {
+            language: this.languageSetting
+        });
+    }
+
+    getDiscordLocale() {
+        try {
+            const localeStore = BdApi.Webpack.getStore?.("LocaleStore");
+            const locale = localeStore?.locale ?? localeStore?.systemLocale;
+            if (typeof locale === "string" && locale) return locale;
+        } catch {}
+
+        try {
+            const locale = navigator?.language;
+            if (typeof locale === "string" && locale) return locale;
+        } catch {}
+
+        return "en-US";
+    }
+
+    normalizeLanguage(locale) {
+        const normalized = String(locale || "")
+            .trim()
+            .toLowerCase()
+            .replace("_", "-");
+
+        const base = normalized.split("-")[0];
+
+        if (ROLESEARCH_I18N[normalized]) return normalized;
+        if (ROLESEARCH_I18N[base]) return base;
+
+        return "en";
+    }
+
+    getActiveLanguage() {
+        if (
+            this.languageSetting !== "auto" &&
+            ROLESEARCH_I18N[this.languageSetting]
+        ) {
+            return this.languageSetting;
+        }
+
+        return this.normalizeLanguage(this.getDiscordLocale());
+    }
+
+    t(key, vars = {}) {
+        const language = this.getActiveLanguage();
+        const table = ROLESEARCH_I18N[language] ?? ROLESEARCH_I18N.en;
+        let value = table[key] ?? ROLESEARCH_I18N.en[key] ?? key;
+
+        return String(value).replace(/\{(\w+)\}/g, (_, name) => {
+            return Object.prototype.hasOwnProperty.call(vars, name)
+                ? String(vars[name])
+                : `{${name}}`;
+        });
+    }
+
+    presenceLabel(status) {
+        switch (status) {
+            case "online": return this.t("presenceOnline");
+            case "idle": return this.t("presenceIdle");
+            case "dnd": return this.t("presenceDnd");
+            case "streaming": return this.t("presenceStreaming");
+            default: return this.t("presenceOffline");
+        }
+    }
+
+    setLanguage(language) {
+        if (language !== "auto" && !ROLESEARCH_I18N[language]) {
+            language = "auto";
+        }
+
+        this.languageSetting = language;
+        this.savePluginSettings();
+        this.refreshUI();
+
+        const displayName =
+            language === "auto"
+                ? `${ROLESEARCH_LANGUAGE_NAMES.auto} → ${ROLESEARCH_LANGUAGE_NAMES[this.getActiveLanguage()] ?? this.getActiveLanguage()}`
+                : ROLESEARCH_LANGUAGE_NAMES[language] ?? language;
+
+        BdApi.UI.showToast(
+            this.t("languageChanged", {language: displayName})
+        );
     }
 
     // ============================================================
@@ -382,7 +959,7 @@ module.exports = class RoleSearch {
 
         this.refreshUI();
         BdApi.UI.showToast(
-            "RoleSearch v2 cache cleared. Legacy DFS checkpoint was preserved."
+            this.t("cacheCleared")
         );
     }
 
@@ -943,7 +1520,7 @@ module.exports = class RoleSearch {
     }
 
     roleStatusText() {
-        if (!this.selectedRoleId) return "Vyber roli.";
+        if (!this.selectedRoleId) return this.t("selectRole");
 
         const state = this.selectedRoleState();
         const totalCount = this.selectedRoleTotalCount();
@@ -952,15 +1529,15 @@ module.exports = class RoleSearch {
         const hydration = this.hydrationStats();
 
         if (!state) {
-            return "Čekám na přímé načtení členů role…";
+            return this.t("waitingDirectMembers");
         }
 
         if (state.status === "loading") {
-            return "Načítám member IDs přímo z Discord role API…";
+            return this.t("loadingMemberIds");
         }
 
         if (state.status === "error") {
-            return `Role API chyba: ${state.error || "unknown error"}`;
+            return this.t("roleApiError", {error: state.error || "unknown error"});
         }
 
         if (state.status === "loaded") {
@@ -970,28 +1547,26 @@ module.exports = class RoleSearch {
             let coverage;
             if (typeof totalCount === "number") {
                 if (totalCount <= 100 && direct >= totalCount) {
-                    coverage = `${direct} / ${totalCount} direct IDs — kompletní role`;
+                    coverage = this.t("completeRole", {direct, total: totalCount});
                 } else if (totalCount > 100 && direct >= 100) {
-                    coverage =
-                        `${direct} / ${totalCount} direct IDs — Discord endpoint má limit 100`;
+                    coverage = this.t("endpointLimit", {direct, total: totalCount});
                 } else {
-                    coverage = `${direct} / ${totalCount} direct IDs`;
+                    coverage = this.t("directOfTotal", {direct, total: totalCount});
                 }
             } else {
-                coverage = `${direct} direct IDs loaded`;
+                coverage = this.t("directLoaded", {direct});
             }
 
             if (extras > 0) {
-                coverage += ` • +${extras} extra z uložené/legacy cache`;
+                coverage += this.t("extraCache", {extras});
             }
 
-            coverage +=
-                ` • detaily ${hydration.resolved}/${hydration.total}`;
+            coverage += this.t("details", {resolved: hydration.resolved, total: hydration.total});
 
             return coverage;
         }
 
-        return "Čekám na data role…";
+        return this.t("waitingRoleData");
     }
 
     roleColor(role) {
@@ -1038,7 +1613,7 @@ module.exports = class RoleSearch {
     openUserProfile(userId) {
         const id = String(userId);
         if (!id || !this.userProfileActions?.openUserProfileModal) {
-            BdApi.UI.showToast("RoleSearch: user profile action not found.", {type: "error"});
+            BdApi.UI.showToast(this.t("profileActionMissing"), {type: "error"});
             return;
         }
 
@@ -1062,7 +1637,7 @@ module.exports = class RoleSearch {
             this.userProfileActions.openUserProfileModal(payload);
         } catch (error) {
             console.error("[RoleSearch] Could not open user profile:", error);
-            BdApi.UI.showToast("RoleSearch: could not open profile.", {type: "error"});
+            BdApi.UI.showToast(this.t("profileOpenFailed"), {type: "error"});
         }
     }
 
@@ -1087,7 +1662,7 @@ module.exports = class RoleSearch {
                     const item = BdApi.ContextMenu.buildItem({
                         type: "text",
                         id: "rolesearch-open",
-                        label: "RoleSearch",
+                        label: this.t("contextMenuLabel"),
                         action: () => this.openRoleSearchModal(String(guild.id))
                     });
 
@@ -1254,7 +1829,7 @@ module.exports = class RoleSearch {
                     {
                         key: id,
                         onClick: () => plugin.openUserProfile(id),
-                        title: "Open Discord profile",
+                        title: plugin.t("openDiscordProfile"),
                         style: {
                             width: "100%",
                             display: "flex",
@@ -1305,7 +1880,7 @@ module.exports = class RoleSearch {
                                     whiteSpace: "nowrap"
                                 }
                             },
-                            `${member.username ? "@" + member.username + " • " : ""}${status}`
+                            `${member.username ? "@" + member.username + " • " : ""}${plugin.presenceLabel(status)}`
                         )
                     )
                 );
@@ -1347,7 +1922,7 @@ module.exports = class RoleSearch {
                     ),
                     h("input", {
                         value: roleQuery,
-                        placeholder: "Search role…",
+                        placeholder: plugin.t("searchRole"),
                         onChange: e => setRoleQuery(e.target.value),
                         style: {
                             width: "100%",
@@ -1374,7 +1949,7 @@ module.exports = class RoleSearch {
                             : h(
                                 "div",
                                 {style: {opacity: "0.65", padding: "8px"}},
-                                "No roles found."
+                                plugin.t("noRolesFound")
                             )
                     )
                 ),
@@ -1438,13 +2013,13 @@ module.exports = class RoleSearch {
                                         cursor: "pointer"
                                     }
                                 },
-                                "Refresh"
+                                plugin.t("refresh")
                             )
                         )
                         : h(
                             "div",
                             {style: {fontWeight: "700", marginBottom: "10px"}},
-                            "Select a role"
+                            plugin.t("selectRole").replace(/\.$/, "")
                         ),
                     h(
                         "div",
@@ -1459,13 +2034,13 @@ module.exports = class RoleSearch {
                             }
                         },
                         selected
-                            ? `${statusText}${typeof totalCount === "number" ? ` • server total: ${totalCount}` : ""}`
-                            : "Vyber roli vlevo."
+                            ? `${statusText}${typeof totalCount === "number" ? ` • ${plugin.t("totalSuffix", {count: totalCount}).replace(/^\s*—\s*/, "")}` : ""}`
+                            : plugin.t("selectRoleLeft")
                     ),
                     h("input", {
                         value: memberQuery,
                         disabled: !selected,
-                        placeholder: "Search members…",
+                        placeholder: plugin.t("searchMembers"),
                         onChange: e => setMemberQuery(e.target.value),
                         style: {
                             width: "100%",
@@ -1489,8 +2064,8 @@ module.exports = class RoleSearch {
                             }
                         },
                         selected
-                            ? `${visibleIds.length} shown / ${effectiveIds.length} loaded`
-                            : "0 members"
+                            ? plugin.t("shownLoaded", {shown: visibleIds.length, loaded: effectiveIds.length})
+                            : plugin.t("zeroMembers")
                     ),
                     h(
                         "div",
@@ -1508,7 +2083,7 @@ module.exports = class RoleSearch {
                             ? h(
                                 "div",
                                 {style: {padding: "14px", opacity: "0.75"}},
-                                "Loading role members…"
+                                plugin.t("loadingRoleMembers")
                             )
                             : memberRows.length
                                 ? memberRows
@@ -1516,8 +2091,8 @@ module.exports = class RoleSearch {
                                     "div",
                                     {style: {padding: "14px", opacity: "0.75"}},
                                     selected
-                                        ? "No loaded members match."
-                                        : "Select a role."
+                                        ? plugin.t("noLoadedMembersMatch")
+                                        : plugin.t("selectRole")
                                 )
                     )
                 )
@@ -1596,7 +2171,7 @@ module.exports = class RoleSearch {
         const closeButton = document.createElement("button");
         closeButton.type = "button";
         closeButton.textContent = "✕";
-        closeButton.title = "Close";
+        closeButton.title = this.t("close");
         Object.assign(closeButton.style, {
             width: "34px",
             height: "34px",
@@ -1694,7 +2269,7 @@ module.exports = class RoleSearch {
         } catch (error) {
             console.error("[RoleSearch] Could not render custom modal:", error);
             closeModal();
-            BdApi.UI.showToast("RoleSearch: custom modal render failed. Check console.", {type: "error"});
+            BdApi.UI.showToast(this.t("customModalFailed"), {type: "error"});
         }
     }
 
@@ -1918,9 +2493,9 @@ module.exports = class RoleSearch {
 
             let suffix = "";
             if (typeof total === "number") {
-                suffix = ` — ${total} total`;
+                suffix = this.t("totalSuffix", {count: total});
             } else if (cachedDirect) {
-                suffix = ` — ${cachedDirect} cached`;
+                suffix = this.t("cachedSuffix", {count: cachedDirect});
             }
 
             const option = document.createElement("option");
@@ -1954,14 +2529,13 @@ module.exports = class RoleSearch {
         const ids = this.filteredSelectedRoleIds();
         const effectiveTotal = this.selectedRoleEffectiveIds().length;
 
-        countEl.textContent =
-            `${ids.length} zobrazeno / ${effectiveTotal} unikátních načtených členů`;
+        countEl.textContent = this.t("memberCount", {shown: ids.length, loaded: effectiveTotal});
 
         list.innerHTML = "";
 
         if (!this.selectedRoleId) {
             list.appendChild(
-                this.el("div", {style: {padding: "12px", opacity: "0.75"}}, "Vyber roli.")
+                this.el("div", {style: {padding: "12px", opacity: "0.75"}}, this.t("selectRole"))
             );
             return;
         }
@@ -1971,7 +2545,7 @@ module.exports = class RoleSearch {
                 this.el(
                     "div",
                     {style: {padding: "12px", opacity: "0.75"}},
-                    "Zatím nejsou načteni žádní členové této role."
+                    this.t("noMembersLoaded")
                 )
             );
             return;
@@ -2018,7 +2592,7 @@ module.exports = class RoleSearch {
                 this.el(
                     "div",
                     {style: {padding: "10px", opacity: "0.7"}},
-                    `Zobrazeno prvních ${maxRender} z ${ids.length}. Použij search pro zúžení.`
+                    this.t("maxShown", {max: maxRender, total: ids.length})
                 )
             );
         }
@@ -2030,22 +2604,26 @@ module.exports = class RoleSearch {
         if (this.ui.guildLabel) {
             this.ui.guildLabel.textContent = this.guildId
                 ? `${this.guildName} (${this.guildId})`
-                : "Není vybraný server";
+                : this.t("noServerSelected");
+        }
+
+        if (this.ui.languageSelect) {
+            this.ui.languageSelect.value = this.languageSetting;
         }
 
         if (this.ui.globalStatus) {
             const counts =
                 this.countsState.status === "loading"
-                    ? "role counts: loading"
+                    ? this.t("roleCountsLoading")
                     : this.countsState.status === "loaded"
-                        ? `role counts: ${this.roleCounts.size} loaded`
+                        ? this.t("roleCountsLoaded", {count: this.roleCounts.size})
                         : this.countsState.status === "error"
-                            ? `role counts error: ${this.countsState.error}`
-                            : "role counts: idle";
+                            ? this.t("roleCountsError", {error: this.countsState.error})
+                            : this.t("roleCountsIdle");
 
             this.ui.globalStatus.textContent =
-                `${counts} • cached member details: ${this.memberDetails.size} ` +
-                `• legacy imported: ${this.legacyImportedIds.size}`;
+                `${counts} • ${this.t("cachedDetails", {count: this.memberDetails.size})} ` +
+                `• ${this.t("legacyImported", {count: this.legacyImportedIds.size})}`;
         }
 
         this.renderRoleOptions();
@@ -2101,6 +2679,58 @@ module.exports = class RoleSearch {
             }
         });
 
+        const languageLabel = this.el(
+            "div",
+            {
+                style: {
+                    marginBottom: "6px",
+                    fontWeight: "600"
+                }
+            },
+            this.t("settingsLanguage")
+        );
+
+        const languageSelect = this.el("select", {
+            onChange: event => {
+                this.setLanguage(event.target.value);
+            },
+            style: {
+                width: "100%",
+                maxWidth: "360px",
+                boxSizing: "border-box",
+                padding: "8px 10px",
+                marginBottom: "6px",
+                border: "1px solid var(--background-modifier-accent)",
+                borderRadius: "6px",
+                background: "var(--background-secondary)",
+                color: "var(--text-normal)"
+            }
+        });
+
+        for (const [value, name] of Object.entries(ROLESEARCH_LANGUAGE_NAMES)) {
+            const option = document.createElement("option");
+            option.value = value;
+            option.textContent =
+                value === "auto"
+                    ? `${name} → ${ROLESEARCH_LANGUAGE_NAMES[this.normalizeLanguage(this.getDiscordLocale())] ?? "English"}`
+                    : name;
+            option.selected = value === this.languageSetting;
+            languageSelect.appendChild(option);
+        }
+
+        const languageHint = this.el(
+            "div",
+            {
+                style: {
+                    marginBottom: "14px",
+                    opacity: "0.72",
+                    fontSize: "12px",
+                    lineHeight: "1.4"
+                }
+            },
+            this.t("settingsLanguageHint")
+        );
+
         const note = this.el(
             "div",
             {
@@ -2113,20 +2743,17 @@ module.exports = class RoleSearch {
                     lineHeight: "1.45"
                 }
             },
-            "Po výběru role se member IDs načtou přímo z Discord role API. " +
-            "Endpoint vrací maximálně 100 IDs. U role do 100 členů tak může být výsledek kompletní; " +
-            "u větší role se zobrazí 100 přímých výsledků plus případní další členové z uložené/legacy cache. " +
-            "Starý DFS checkpoint plugin nemaže ani nepřepisuje."
+            this.t("note")
         );
 
         const refreshCountsButton = this.button(
-            "Refresh role counts",
+            this.t("refreshRoleCounts"),
             () => void this.fetchRoleCounts(true),
             "normal"
         );
 
         const refreshRoleButton = this.button(
-            "Refresh selected role",
+            this.t("refreshSelectedRole"),
             () => {
                 if (this.selectedRoleId) {
                     void this.fetchRoleMemberIds(this.selectedRoleId, true);
@@ -2136,13 +2763,13 @@ module.exports = class RoleSearch {
         );
 
         const switchServerButton = this.button(
-            "Use currently open server",
+            this.t("useCurrentServer"),
             () => this.switchToCurrentGuild(),
             "normal"
         );
 
         const clearCacheButton = this.button(
-            "Clear v2 cache",
+            this.t("clearCache"),
             () => this.clearV2Cache(),
             "danger"
         );
@@ -2165,7 +2792,7 @@ module.exports = class RoleSearch {
 
         const roleSearch = this.el("input", {
             type: "text",
-            placeholder: "Search role name...",
+            placeholder: this.t("searchRoleName"),
             value: this.roleSearchText,
             onInput: event => {
                 this.roleSearchText = event.target.value;
@@ -2210,7 +2837,7 @@ module.exports = class RoleSearch {
 
         const memberSearch = this.el("input", {
             type: "text",
-            placeholder: "Search loaded members by username / display name / nick / ID...",
+            placeholder: this.t("searchLoadedMembers"),
             value: this.memberSearchText,
             onInput: event => {
                 this.memberSearchText = event.target.value;
@@ -2247,16 +2874,19 @@ module.exports = class RoleSearch {
 
         root.append(
             this.el("h2", {style: {marginTop: "0"}}, "RoleSearch"),
-            this.el("h3", {}, "Server"),
+            this.el("h3", {}, this.t("server")),
             guildLabel,
             globalStatus,
+            languageLabel,
+            languageSelect,
+            languageHint,
             note,
             controls,
-            this.el("h3", {}, "Role"),
+            this.el("h3", {}, this.t("role")),
             roleSearch,
             roleSelect,
             roleStatus,
-            this.el("h3", {}, "Members with selected role"),
+            this.el("h3", {}, this.t("membersWithSelectedRole")),
             memberSearch,
             memberCount,
             memberList
@@ -2265,6 +2895,7 @@ module.exports = class RoleSearch {
         this.ui = {
             guildLabel,
             globalStatus,
+            languageSelect,
             roleSelect,
             roleStatus,
             memberSearch,
@@ -2293,6 +2924,7 @@ module.exports = class RoleSearch {
     // ============================================================
 
     start() {
+        this.loadPluginSettings();
         this.dispatcher = this.findDispatcher();
         this.rest = this.findRestAPI();
         this.snowflakeUtils = this.findSnowflakeUtils();
@@ -2324,7 +2956,7 @@ module.exports = class RoleSearch {
         this.switchToCurrentGuild();
         this.patchGuildContextMenu();
 
-        console.log("[RoleSearch] v2.3.0 loaded.");
+        console.log("[RoleSearch] v2.4.0 loaded.");
     }
 
     stop() {

@@ -4,7 +4,7 @@ A BetterDiscord plugin for quickly browsing Discord server roles and the members
 
 RoleSearch avoids crawling an entire server whenever possible. It reads role member counts, requests the member IDs for the selected role, hydrates missing member information through Discord's Gateway, deduplicates users by Discord ID, and keeps a local BetterDiscord cache for faster repeat lookups.
 
-> **Version:** 2.3.0  
+> **Version:** 2.4.0  
 > **Platform:** BetterDiscord / Discord desktop client  
 > **Dependencies:** None
 
@@ -36,6 +36,10 @@ RoleSearch avoids crawling an entire server whenever possible. It reads role mem
   - Role counts, role member IDs, member details, and the currently selected role are stored locally through BetterDiscord's data API.
 - **Legacy DFS cache support**
   - Can import member data from the older DFS/checkpoint format without deleting the old checkpoint.
+- **Localization**
+  - Automatically follows Discord's language when supported.
+  - Manual language override in plugin settings.
+  - Unsupported Discord languages fall back to English.
 - **Dark / light theme support**
   - Detects Discord's current theme and applies a matching high-contrast palette.
   - The open RoleSearch window updates when the Discord theme changes.
@@ -109,6 +113,49 @@ RoleSearch will try to open Discord's normal user profile modal for that user an
 Use **Refresh** for the selected role when you want to request its member IDs again.
 
 The BetterDiscord plugin settings page also provides controls for refreshing role counts and clearing the v2 cache.
+
+
+## Localization
+
+RoleSearch can automatically follow Discord's language and falls back to English when the current Discord language is not supported.
+
+Included languages:
+
+- English
+- Čeština (Czech)
+- Slovenčina (Slovak)
+- Deutsch (German)
+- Polski (Polish)
+- Español (Spanish)
+- Français (French)
+
+The default language mode is:
+
+```text
+Auto (Discord)
+```
+
+You can override it manually from:
+
+```text
+User Settings → BetterDiscord → Plugins → RoleSearch → Settings → Language
+```
+
+Changing the manual language takes effect immediately in the settings UI, and the RoleSearch modal uses the currently selected language on its next render.
+
+If **Auto (Discord)** is selected, RoleSearch reads Discord's `LocaleStore.locale` (with the system/browser locale as a fallback). If that locale is not present in RoleSearch's translation table, English is used.
+
+### Adding another translation
+
+Translations are stored in `ROLESEARCH_I18N` near the top of `RoleSearch.plugin.js`.
+
+To add a language:
+
+1. Add the language code and display name to `ROLESEARCH_LANGUAGE_NAMES`.
+2. Add a matching translation object to `ROLESEARCH_I18N`.
+3. Keep the same translation keys as the English object.
+4. Reload Discord and select the new language from RoleSearch settings.
+
 
 ## Important limitation: 100 direct members per role
 
@@ -283,3 +330,4 @@ BetterDiscord modifies the Discord client, and Discord's internal APIs can chang
 
 RoleSearch is released under the [MIT License](LICENSE).
 
+Before publishing the repository, replace `YOUR_GITHUB_USERNAME` in both `RoleSearch.plugin.js` and `LICENSE` with your actual GitHub username or preferred author name.
